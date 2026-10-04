@@ -308,18 +308,31 @@ export function ClarifyChat({
   const asking = busy === "ask";
   const saving = busy === "save";
 
+  // Saat halaman dibuka dan belum ada pertanyaan sama sekali, langsung minta
+  // pertanyaan pertama ke AI (tanpa tombol "Mulai tanya jawab"). Guard ref
+  // mencegah pemanggilan ganda (mis. double-invoke React StrictMode).
+  const autoStartedRef = React.useRef(false);
+  const needsFirstQuestion = history.length === 0;
+  React.useEffect(() => {
+    if (needsFirstQuestion && !autoStartedRef.current) {
+      autoStartedRef.current = true;
+      askAi();
+    }
+    // Hanya dipicu oleh ada/tidaknya riwayat; askAi stabil per mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsFirstQuestion]);
+
+  const showRetry = needsFirstQuestion && error !== null && !asking;
+
   return (
     <div className="mt-8 flex flex-col gap-4">
       {/* =========================================================
-          EMPTY STATE
+          AUTO-LOADING: pertanyaan pertama sedang diminta ke AI.
       ========================================================= */}
 
-      {history.length === 0 && (
+      {needsFirstQuestion && asking && (
         <div className="rounded-lg bg-carbon p-6 shadow-hairline">
-          <p className="text-sm text-fog">
-            Belum ada pertanyaan. Tekan tombol di bawah agar AI
-            membaca idemu dan mulai bertanya.
-          </p>
+          <p className="text-sm text-fog">AI sedang membaca idemu...</p>
         </div>
       )}
 
@@ -627,17 +640,15 @@ export function ClarifyChat({
       ========================================================= */}
 
       <div className="flex flex-wrap items-center gap-3">
-        {/* Start */}
+        {/* Coba lagi bila permintaan pertanyaan pertama gagal */}
 
-        {history.length === 0 && (
+        {showRetry && (
           <Button
             variant="primary"
             onClick={() => askAi()}
             disabled={busy !== null}
           >
-            {asking
-              ? "AI sedang membaca..."
-              : "Mulai tanya jawab"}
+            Coba lagi
           </Button>
         )}
 

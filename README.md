@@ -13,6 +13,7 @@ Alurnya lima langkah: tulis ide, jawab pertanyaan klarifikasi AI, susun PRD, pec
 - **Langkah 3 — PRD** (`/projects/[id]/prd`) — AI menyusun PRD terstruktur (ringkasan, masalah, tujuan, persona, fitur dengan prioritas MoSCoW, tech stack, non-goal) yang bisa dilihat dan diedit.
 - **Langkah 4 — Fase dan task** (`/projects/[id]/tasks`) — AI memecah PRD menjadi minimal 3 fase, tiap fase berisi task spesifik yang bisa dicentang.
 - **Langkah 5 — Salin ke agent** (`/projects/[id]/export`) — satu blok Markdown (konteks proyek + PRD + seluruh fase dan task dengan penanda centang) siap ditempel; juga tersedia ekspor per fase.
+- **Pelacakan task dari agent** — tiap task punya *short-id* (mis. `T-3-2`). Blok export memuat instruksi agar AI coding agent memanggil endpoint `/api/agent/tasks/<shortId>/complete` (dengan token proyek) begitu menyelesaikan task. Status task di website ikut tercentang otomatis via Supabase Realtime.
 - **Pengaturan model AI** (`/settings`) — pilih model AI dari daftar model yang tersedia di 9Router, dikelompokkan per provider, dan disimpan per user. Bila belum dipilih, dipakai `AI_MODEL` dari environment.
 - **Rate limit** — endpoint AI dibatasi 30 permintaan per menit per user.
 
@@ -35,6 +36,7 @@ app/                       halaman App Router + API route
   api/ai/prd/              POST: hasilkan & simpan PRD
   api/ai/tasks/            POST: hasilkan fase & task
   api/ai/models/           GET: daftar model dari 9Router
+  api/agent/tasks/[shortId]/complete/  POST: laporan task selesai dari agent
   auth/callback/           handler callback OAuth Google
   dashboard/               daftar & buat proyek
   login/                   halaman masuk + server actions
@@ -43,10 +45,12 @@ app/                       halaman App Router + API route
 components/                UI dasar (ui/) + header, stepper, model-select, dll
 lib/
   ai/                      klien 9Router, skema Zod, prompt, daftar model
+  agents/token.ts          generate/hash/verifikasi token agent per proyek
   db/                      query database (queries.ts)
-  supabase/                klien Supabase (browser, server, middleware)
+  supabase/                klien Supabase (browser, server, service role, middleware)
   export.ts                penyusun Markdown untuk export
   clarify.ts               logika klarifikasi (user story, putaran)
+  short-id.ts              kode task human-readable (T-fase-task)
   rate-limit.ts            pembatas permintaan AI per user
   env.ts, types.ts, utils.ts
 scripts/                   skrip verifikasi + helper migrasi database
@@ -108,7 +112,9 @@ Tabel utama:
 | `clarify_messages` | Riwayat tanya-jawab klarifikasi (`assistant`/`user`). |
 | `prds` | PRD terstruktur per proyek (goals, personas, features, tech_stack, non_goals, `raw_markdown`). |
 | `phases` | Fase pengerjaan per proyek (berurutan via `order_index`). |
-| `tasks` | Task di dalam fase (berurutan, punya `is_done` untuk centang). |
+| `tasks` | Task di dalam fase (berurutan, punya `is_done` untuk centang, `short_id` untuk short-id agent, dan `completed_at` untuk waktu selesai). |
+
+Proyek menyimpan `agent_token` (token agent tetap, dibuat otomatis saat membuka halaman export) untuk autentikasi laporan dari agent.
 
 Setiap tabel dilindungi **Row Level Security**: user hanya bisa mengakses barisnya sendiri, memakai fungsi bantu `owns_project()` dan `owns_phase()`. Terdapat pula trigger `set_updated_at` (auto `updated_at`) dan `handle_new_user` (auto-buat profile).
 
@@ -139,7 +145,37 @@ Migrasi baru: `npx supabase migration new <nama>`, tulis SQL-nya di `supabase/mi
 | `db:push` | `node scripts/db.mjs push` | Terapkan migrasi. |
 | `db:repair` | `node scripts/db.mjs repair` | Perbaiki riwayat migrasi di remote. |
 
-Di `scripts/` juga terdapat skrip pengujian tambahan yang dipanggil langsung dengan Node (mis. `test-clarify-route.mjs`, `test-prd-route.mjs`, `test-tasks-route.mjs`, `test-models.mjs`, `test-export.mjs`, `test-projects.mjs`, `test-ratelimit.mjs`, `test-settings.mjs`).
+Di `scripts/` juga terdapat skrip pengujian tambahan yang dipanggil langsung dengan Node (mis. `test-clarify-route.mjs`, `test-prd-route.mjs`, `test-tasks-route.mjs`, `test-agent-complete.mjs`, `test-models.mjs`, `test-export.mjs`, `test-projects.mjs`, `test-ratelimit.mjs`, `test-settings.mjs`).
+
+## Pelacakan task dari AI coding agent
+
+PlanForge bisa menandai task selesai secara otomatis saat AI coding agent mengerjakannya.
+
+**Cara pakai:**
+
+1. Buka **Langkah 5 — Salin ke agent**. Token agent **dibuat otomatis sekali** saat pertama kali halaman ini dibuka (satu proyek = satu token tetap).
+2. Salin blok Markdown export. Tiap task punya short-id (mis. `T-3-2`) dan blok instruksi berisi token + perintah `curl` — jadi agent langsung bisa melapor.
+3. Saat agent menyelesaikan sebuah task, ia menjalankan:
+   ```bash
+   curl -X POST "https://<domain>/api/agent/tasks/T-3-2/complete" \
+     -H "Authorization: Bearer <AGENT_TOKEN>" \
+     -H "X-Project-Id: <PROJECT_ID>"
+   ```
+4. Checkbox task di halaman **Langkah 4** langsung tercentang (via Supabase Realtime), tanpa refresh manual.
+
+**Sifat token:**
+
+- **Satu proyek = satu token tetap.** Token tidak berubah-ubah — membuka ulang atau me-refresh halaman export selalu memakai token yang sama, sehingga agent yang sedang berjalan tidak kehilangan akses.
+- Ada tombol **Reset token (darurat)** di halaman export, hanya untuk keadaan token bocor. Reset akan membuat agent yang sedang berjalan kehilangan akses.
+
+**Keamanan & perilaku:**
+
+- Endpoint bersifat idempotent: memanggil ulang task yang sudah selesai tetap `200 OK`.
+- Respons: `401` tanpa token, `403` token salah, `404` short-id tidak ditemukan, `200` berhasil.
+- Endpoint `/api/agent/*` tidak memakai sesi cookie; autentikasi murni lewat token proyek.
+- Token disimpan di kolom `projects.agent_token` dan dilindungi Row Level Security (hanya pemilik proyek yang bisa membacanya).
+
+**Aktivasi Realtime:** tabel `tasks` sudah ditambahkan ke publication `supabase_realtime` lewat migrasi `20261004000005_agent_tracking.sql`. Bila checkbox tidak ikut berubah, pastikan Realtime aktif di dashboard Supabase (Database → Replication) untuk tabel `tasks`.
 
 ## Deployment
 

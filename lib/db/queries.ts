@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { generateAgentToken } from "@/lib/agents/token";
 import type {
   ClarifyMessage,
   Phase,
@@ -46,6 +47,36 @@ export async function getProject(id: string): Promise<Project | null> {
 
   if (error) throw new Error(error.message);
   return (data as Project) ?? null;
+}
+
+/**
+ * Ambil token agent proyek; bila belum ada, buat otomatis sekali lalu simpan.
+ *
+ * Karena "satu proyek = satu token tetap", pemanggilan berikutnya selalu
+ * mengembalikan token yang sama (tidak berubah-ubah).
+ */
+export async function ensureProjectAgentToken(id: string): Promise<string | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .select("agent_token")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  const existing = (data as { agent_token: string | null }).agent_token;
+  if (existing) return existing;
+
+  const token = generateAgentToken();
+  const { error: updateErr } = await supabase
+    .from("projects")
+    .update({ agent_token: token })
+    .eq("id", id);
+
+  if (updateErr) throw new Error(updateErr.message);
+  return token;
 }
 
 export async function getClarifyMessages(

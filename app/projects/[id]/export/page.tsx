@@ -1,4 +1,9 @@
-import { getProject, getPrd, getPhasesWithTasks } from "@/lib/db/queries";
+import {
+  getProject,
+  getPrd,
+  getPhasesWithTasks,
+  ensureProjectAgentToken,
+} from "@/lib/db/queries";
 import { notFound } from "next/navigation";
 import { buildExportMarkdown, buildPhaseMarkdown } from "@/lib/export";
 import { ExportView } from "./export-view";
@@ -12,12 +17,21 @@ export default async function ExportStepPage({
   const project = await getProject(id);
   if (!project) notFound();
 
-  const [prd, phases] = await Promise.all([
+  const [prd, phases, agentToken] = await Promise.all([
     getPrd(id),
     getPhasesWithTasks(id),
+    ensureProjectAgentToken(id),
   ]);
 
-  const markdown = buildExportMarkdown({ project, prd, phases });
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3001";
+
+  const markdown = buildExportMarkdown({
+    project,
+    prd,
+    phases,
+    siteUrl,
+    agentToken,
+  });
 
   return (
     <div className="max-w-3xl">
@@ -29,6 +43,8 @@ export default async function ExportStepPage({
         ke AI coding agent favoritmu.
       </p>
       <ExportView
+        projectId={id}
+        agentToken={agentToken}
         markdown={markdown}
         phases={phases.map((p, i) => ({
           title: p.title,

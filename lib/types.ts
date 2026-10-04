@@ -72,6 +72,10 @@ export interface Task {
   title: string;
   detail: string | null;
   is_done: boolean;
+  /** Kode human-readable, mis. "T-3-2" (fase 3, task 2). Dipakai agent. */
+  short_id: string | null;
+  /** Waktu task ditandai selesai (biner: ada isi = selesai). */
+  completed_at: string | null;
   created_at: string;
 }
 

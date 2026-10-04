@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useTasksRealtime } from "@/components/use-tasks-realtime";
 import type { PhaseWithTasks } from "@/lib/db/queries";
 import {
   addTask,
@@ -29,6 +30,20 @@ export function TasksView({
   React.useEffect(() => {
     setPhases(initialPhases);
   }, [initialPhases]);
+
+  // Perubahan dari agent (atau tab lain) langsung menyegarkan checkbox.
+  useTasksRealtime(projectId, (change) => {
+    setPhases((prev) =>
+      prev.map((p) => ({
+        ...p,
+        tasks: p.tasks.map((t) =>
+          t.id === change.id
+            ? { ...t, is_done: change.is_done, completed_at: change.completed_at }
+            : t,
+        ),
+      })),
+    );
+  });
 
   async function generate() {
     setBusy("generate");
@@ -55,7 +70,13 @@ export function TasksView({
       prev.map((p) => ({
         ...p,
         tasks: p.tasks.map((t) =>
-          t.id === taskId ? { ...t, is_done: checked } : t,
+          t.id === taskId
+            ? {
+                ...t,
+                is_done: checked,
+                completed_at: checked ? new Date().toISOString() : null,
+              }
+            : t,
         ),
       })),
     );
@@ -209,6 +230,11 @@ function PhaseBlock({
                       : "text-mist")
                   }
                 >
+                  {task.short_id && (
+                    <span className="mr-2 font-mono text-xs text-accent">
+                      {task.short_id}
+                    </span>
+                  )}
                   {task.title}
                 </p>
                 {task.detail && (

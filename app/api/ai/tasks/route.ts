@@ -4,6 +4,7 @@ import { TASKS_SYSTEM, buildTasksUser } from "@/lib/ai/prompts";
 import { chatJson } from "@/lib/ai/client";
 import { getProject, getPrd, getUserAiModel } from "@/lib/db/queries";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { formatShortId } from "@/lib/short-id";
 
 export async function POST(request: Request) {
   const limited = await enforceRateLimit();
@@ -101,6 +102,7 @@ export async function POST(request: Request) {
         title: t.title,
         detail: t.detail,
         is_done: false,
+        short_id: formatShortId(i, ti),
       }));
 
       const { error: taskErr } = await supabase.from("tasks").insert(taskRows);

@@ -11,16 +11,30 @@ export interface ExportBundle {
   project: Project;
   prd: Prd | null;
   phases: PhaseWithTasks[];
+  /** Base URL aplikasi, untuk menyusun perintah curl laporan agent. */
+  siteUrl?: string;
+  /** Token agent tetap proyek, disisipkan ke instruksi pelaporan. */
+  agentToken?: string | null;
+}
+
+/** Baris task dengan short-id + penanda centang. */
+function taskLine(task: { short_id: string | null; title: string; is_done: boolean }): string {
+  const box = task.is_done ? "[x]" : "[ ]";
+  const id = task.short_id ? `${task.short_id} ` : "";
+  return `- ${box} ${id}${task.title}`;
 }
 
 /**
  * Menyusun satu blok Markdown yang siap ditempel ke AI coding agent: konteks
- * proyek, PRD, lalu daftar fase dan task (dengan penanda centang).
+ * proyek, PRD, lalu daftar fase dan task (dengan penanda centang + short-id),
+ * ditutup instruksi pelaporan otomatis via endpoint agent.
  */
 export function buildExportMarkdown({
   project,
   prd,
   phases,
+  siteUrl,
+  agentToken,
 }: ExportBundle): string {
   const lines: string[] = [];
 
@@ -101,14 +115,34 @@ export function buildExportMarkdown({
         lines.push("");
       }
       phase.tasks.forEach((task) => {
-        const box = task.is_done ? "[x]" : "[ ]";
-        lines.push(`- ${box} ${task.title}`);
+        lines.push(taskLine(task));
         if (task.detail) {
           lines.push(`      ${task.detail}`);
         }
       });
       lines.push("");
     });
+  }
+
+  // Instruksi pelaporan otomatis ke PlanForge.
+  const base = (siteUrl ?? "").replace(/\/+$/, "");
+  if (base && agentToken) {
+    lines.push("## Pelaporan progres otomatis ke PlanForge");
+    lines.push("");
+    lines.push(
+      "Setiap kali kamu menyelesaikan satu task di atas, tandai selesai di PlanForge dengan menjalankan perintah berikut (ganti `T-x-y` sesuai short-id task):",
+    );
+    lines.push("");
+    lines.push("```bash");
+    lines.push(`curl -X POST "${base}/api/agent/tasks/T-x-y/complete" \\`);
+    lines.push(`  -H "Authorization: Bearer ${agentToken}" \\`);
+    lines.push(`  -H "X-Project-Id: ${project.id}"`);
+    lines.push("```");
+    lines.push("");
+    lines.push(
+      "Respons `200 OK` menandakan task sudah tercentang di website PlanForge.",
+    );
+    lines.push("");
   }
 
   lines.push("---");
@@ -133,8 +167,7 @@ export function buildPhaseMarkdown(
     lines.push("");
   }
   phase.tasks.forEach((task) => {
-    const box = task.is_done ? "[x]" : "[ ]";
-    lines.push(`- ${box} ${task.title}`);
+    lines.push(taskLine(task));
     if (task.detail) lines.push(`      ${task.detail}`);
   });
   return lines.join("\n");
