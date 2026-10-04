@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* PlanForge is dark-only: the canvas is the product's substrate, not a theme option. */
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    background-color: #08090a;
+  }
+
+  body {
+    @apply bg-void font-sans text-mist antialiased;
+    font-feature-settings: "cv01" 1, "ss03" 1, "zero" 1;
+  }
+
+  * {
+    @apply border-slate;
+  }
+
+  /* Native dropdown (select/option) tidak mewarisi warna via Tailwind;
+     warna latar diatur di sini agar konsisten gelap. */
+  select,
+  option,
+  optgroup {
+    background-color: #0f1011;
+    color: #d0d6e0;
+  }
+  option:checked {
+    background-color: #23252a;
+    color: #ffffff;
+  }
+
+  /* Keep focus visible everywhere; ring is the single accent doing real work. */
+  :focus-visible {
+    outline: 2px solid #02b8cc;
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: rgba(2, 184, 204, 0.28);
+    color: #ffffff;
+  }
+
+  /* Thin scrollbars so panels stay quiet */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #23252a;
+    border-radius: 9999px;
+    border: 2px solid #08090a;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #383b3f;
+  }
+}
